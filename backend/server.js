@@ -6,9 +6,9 @@ const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const fs = require('fs'); 
 const connectDB = require('./config/db');
 const { errorHandler } = require('./utils/errorHandler');
-const fs = require('fs');
 
 // Load env vars
 dotenv.config();

@@ -21,7 +21,7 @@ const app = express();
 // Security middleware
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000 || https://shopverse-mern.netlify.app/',
+  origin: process.env.CLIENT_URL || ['http://localhost:3000', 'https://shopverse-mern.netlify.app'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -96,7 +96,6 @@ if (process.env.NODE_ENV === 'production') {
 app.use(errorHandler);
 
 // Create uploads directory
-const fs = require('fs');
 if (!fs.existsSync('./uploads')) fs.mkdirSync('./uploads');
 
 const PORT = process.env.PORT || 5000;

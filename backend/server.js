@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const connectDB = require('./config/db');
 const { errorHandler } = require('./utils/errorHandler');
+const fs = require('fs');
 
 // Load env vars
 dotenv.config();

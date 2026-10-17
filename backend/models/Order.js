@@ -114,7 +114,6 @@ orderSchema.pre('save', function (next) {
 });
 
 orderSchema.index({ user: 1, createdAt: -1 });
-orderSchema.index({ orderNumber: 1 });
 orderSchema.index({ status: 1 });
 
 module.exports = mongoose.model('Order', orderSchema);

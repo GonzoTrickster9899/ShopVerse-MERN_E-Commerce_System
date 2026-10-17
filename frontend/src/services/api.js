@@ -1,6 +1,13 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const configuredApiUrl = process.env.REACT_APP_API_URL;
+const isProductionBuild = process.env.NODE_ENV === 'production';
+
+if (isProductionBuild && !configuredApiUrl) {
+  throw new Error('REACT_APP_API_URL must be set when building ShopVerse for production.');
+}
+
+const API_BASE_URL = configuredApiUrl || 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,

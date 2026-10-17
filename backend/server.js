@@ -1,23 +1,20 @@
-const express = require('express');
 const dotenv = require('dotenv');
+
+dotenv.config();
+
+const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const mongoose = require('mongoose');
 const connectDB = require('./config/db');
-const { errorHandler } = require('./utils/errorHandler');
-
-// Load env vars
-dotenv.config();
-
-// Connect to database
-connectDB();
+const { AppError, asyncHandler, errorHandler } = require('./utils/errorHandler');
 
 const app = express();
 
-// Security middleware
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:3000',
@@ -26,15 +23,13 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 100,
   message: { success: false, message: 'Too many requests. Please try again later.' },
 });
 app.use('/api/', limiter);
 
-// Auth rate limiting (stricter)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -43,20 +38,36 @@ const authLimiter = rateLimit({
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 
-// Body parser
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Logging
-if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('dev'));
+if (process.env.NODE_ENV === 'development') app.use(morgan('dev'));
+
+// The local upload directory is useful during development only. Vercel's
+// function filesystem is ephemeral and must not be treated as media storage.
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 }
 
-// Static files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Connect lazily so a warm Vercel function can reuse Mongoose's connection.
+// Health reports readiness with a generic response and never exposes URI data.
+app.use('/api', asyncHandler(async (req, res, next) => {
+  try {
+    await connectDB();
+    return next();
+  } catch (error) {
+    if (req.path === '/health') {
+      return res.status(503).json({
+        success: false,
+        status: 'unavailable',
+        message: 'Service temporarily unavailable',
+      });
+    }
+    return next(new AppError('Service temporarily unavailable', 503));
+  }
+}));
 
-// API Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/categories', require('./routes/categories'));
@@ -66,41 +77,27 @@ app.use('/api/wishlist', require('./routes/wishlist'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/payments', require('./routes/payments'));
 
-// Health check
 app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: 'ShopVerse API is running',
-    environment: process.env.NODE_ENV,
-    timestamp: new Date().toISOString(),
-  });
+  const databaseReady = mongoose.connection.readyState === 1;
+  res.status(databaseReady ? 200 : 503).json(databaseReady
+    ? { success: true, status: 'ready' }
+    : { success: false, status: 'unavailable', message: 'Service temporarily unavailable' });
 });
 
-// Serve frontend in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../frontend/build')));
-  app.get('*', (req, res) => {
-    res.sendFile(path.resolve(__dirname, '../frontend/build/index.html'));
-  });
-}
-
-// Error handler
 app.use(errorHandler);
 
-// Create uploads directory
-const fs = require('fs');
-if (!fs.existsSync('./uploads')) fs.mkdirSync('./uploads');
-
-const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => {
-  console.log(`\n🚀 ShopVerse API running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
-  console.log(`   Health: http://localhost:${PORT}/api/health\n`);
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error(`Unhandled Rejection: ${err.message}`);
-  server.close(() => process.exit(1));
-});
-
 module.exports = app;
+
+// Local development entry point. Vercel imports the exported Express app and
+// does not open a separate listener or install a process-wide rejection hook.
+if (require.main === module) {
+  const port = process.env.PORT || 5000;
+  const server = app.listen(port, () => {
+    console.log(`ShopVerse API listening on port ${port}`);
+  });
+
+  process.on('unhandledRejection', (error) => {
+    console.error('Unhandled promise rejection in local server');
+    server.close(() => process.exit(1));
+  });
+}
